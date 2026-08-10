@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: lockmandas-school-erp
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    preDeployCommand: npm run db:push && npm run db:seed
+    startCommand: npm start -w apps/api
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lockmandas-erp-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: WEB_URL
+        value: https://lockmandas-school-erp.onrender.com
+
+databases:
+  - name: lockmandas-erp-db
+    plan: free
+    databaseName: lockmandas_erp
+    user: lockmandas_erp_user

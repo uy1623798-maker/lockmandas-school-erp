@@ -1,0 +1,4 @@
+import {createContext,useContext,useEffect,useState} from 'react'; import {api,setToken} from './api';
+export type User={id:string;name:string;email:string;role:'ADMIN'|'TEACHER'|'STUDENT';avatarUrl?:string};
+const Auth=createContext<any>(null); export const useAuth=()=>useContext(Auth);
+export function AuthProvider({children}:{children:React.ReactNode}){const[user,setUser]=useState<User|null>(null);const[loading,setLoading]=useState(true);useEffect(()=>{api.get('/auth/me').then(r=>setUser(r.data)).catch(()=>{}).finally(()=>setLoading(false))},[]);const login=async(login:string,password:string)=>{const{data}=await api.post('/auth/login',{login,password});setToken(data.accessToken);setUser(data.user);return data.user};const logout=async()=>{try{await api.post('/auth/logout')}finally{setToken(null);setUser(null)}};return <Auth.Provider value={{user,loading,login,logout,setUser}}>{children}</Auth.Provider>}

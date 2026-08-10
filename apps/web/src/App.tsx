@@ -1,0 +1,2 @@
+import{Navigate,Route,Routes}from'react-router-dom';import{useAuth}from'./auth';import PublicSite from'./pages/PublicSite';import Login from'./pages/Login';import Portal from'./pages/Portal';
+export default function App(){const{user,loading}=useAuth();return <Routes><Route path="/*" element={<PublicSite/>}/><Route path="/login" element={user?<Navigate to="/portal"/>:<Login/>}/><Route path="/portal/*" element={loading?<div className="center">Loading…</div>:user?<Portal/>:<Navigate to="/login"/>}/></Routes>}

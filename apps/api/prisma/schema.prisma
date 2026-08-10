@@ -1,0 +1,168 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+
+enum Role { ADMIN TEACHER STUDENT }
+enum AttendanceStatus { PRESENT ABSENT LEAVE }
+enum AttendanceState { DRAFT SUBMITTED REOPEN_REQUESTED REOPENED }
+enum NoticeAudience { ALL CLASS }
+
+model User {
+  id String @id @default(cuid())
+  name String
+  username String @unique
+  email String @unique
+  passwordHash String
+  role Role
+  avatarUrl String?
+  refreshTokenHash String?
+  resetTokenHash String?
+  resetTokenExpires DateTime?
+  teacher Teacher?
+  student Student?
+  notices Notice[] @relation("NoticeAuthor")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AcademicYear {
+  id String @id @default(cuid())
+  name String @unique
+  startsOn DateTime
+  endsOn DateTime
+  active Boolean @default(false)
+  classes Class[]
+}
+
+model Class {
+  id String @id @default(cuid())
+  name String
+  section String
+  academicYearId String
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  students Student[]
+  assignments TeachingAssignment[]
+  timetable TimetableEntry[]
+  attendanceSessions AttendanceSession[]
+  notices Notice[]
+  @@unique([name, section, academicYearId])
+}
+
+model Teacher {
+  id String @id @default(cuid())
+  userId String @unique
+  employeeNo String @unique
+  phone String?
+  qualification String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments TeachingAssignment[]
+  timetable TimetableEntry[]
+  markedSessions AttendanceSession[] @relation("MarkedBy")
+  marks Mark[] @relation("MarkedByTeacher")
+}
+
+model Student {
+  id String @id @default(cuid())
+  userId String @unique
+  admissionNo String @unique
+  classId String
+  rollNo Int
+  parentName String?
+  parentContact String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  class Class @relation(fields: [classId], references: [id])
+  attendance AttendanceRecord[]
+  marks Mark[]
+  @@unique([classId, rollNo])
+}
+
+model Subject {
+  id String @id @default(cuid())
+  name String
+  code String @unique
+  assignments TeachingAssignment[]
+  timetable TimetableEntry[]
+  attendanceSessions AttendanceSession[]
+  marks Mark[]
+}
+
+model TeachingAssignment {
+  id String @id @default(cuid())
+  teacherId String
+  classId String
+  subjectId String
+  teacher Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  @@unique([teacherId, classId, subjectId])
+}
+
+model AttendanceSession {
+  id String @id @default(cuid())
+  classId String
+  subjectId String
+  date DateTime @db.Date
+  period Int
+  state AttendanceState @default(DRAFT)
+  markedById String
+  submittedAt DateTime?
+  reopenReason String?
+  class Class @relation(fields: [classId], references: [id])
+  subject Subject @relation(fields: [subjectId], references: [id])
+  markedBy Teacher @relation("MarkedBy", fields: [markedById], references: [id])
+  records AttendanceRecord[]
+  @@unique([classId, subjectId, date, period])
+}
+
+model AttendanceRecord {
+  id String @id @default(cuid())
+  sessionId String
+  studentId String
+  status AttendanceStatus
+  session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  @@unique([sessionId, studentId])
+}
+
+model TimetableEntry {
+  id String @id @default(cuid())
+  classId String
+  subjectId String
+  teacherId String
+  dayOfWeek Int
+  period Int
+  startsAt String
+  endsAt String
+  class Class @relation(fields: [classId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id])
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+  @@unique([classId, dayOfWeek, period])
+}
+
+model Mark {
+  id String @id @default(cuid())
+  studentId String
+  subjectId String
+  exam String
+  score Float
+  maximum Float
+  teacherId String
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id])
+  teacher Teacher @relation("MarkedByTeacher", fields: [teacherId], references: [id])
+  @@unique([studentId, subjectId, exam])
+}
+
+model Notice {
+  id String @id @default(cuid())
+  title String
+  body String
+  audience NoticeAudience @default(ALL)
+  classId String?
+  authorId String
+  class Class? @relation(fields: [classId], references: [id])
+  author User @relation("NoticeAuthor", fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model AdmissionEnquiry { id String @id @default(cuid()) studentName String parentName String email String phone String grade String message String? createdAt DateTime @default(now()) }
+model ContactMessage { id String @id @default(cuid()) name String email String phone String? subject String message String createdAt DateTime @default(now()) }
