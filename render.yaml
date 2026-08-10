@@ -3,8 +3,7 @@ services:
     name: lockmandas-school-erp
     runtime: node
     plan: free
-    buildCommand: npm install --include=dev && npm run build
-    preDeployCommand: npm run db:push && npm run db:seed
+    buildCommand: npm install --include=dev && npm run build && npm run db:push && npm run db:seed
     startCommand: npm start -w apps/api
     healthCheckPath: /api/health
     envVars:
