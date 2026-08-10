@@ -1,10 +1,35 @@
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+generator client {
+  provider = "prisma-client-js"
+}
 
-enum Role { ADMIN TEACHER STUDENT }
-enum AttendanceStatus { PRESENT ABSENT LEAVE }
-enum AttendanceState { DRAFT SUBMITTED REOPEN_REQUESTED REOPENED }
-enum NoticeAudience { ALL CLASS }
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LEAVE
+}
+
+enum AttendanceState {
+  DRAFT
+  SUBMITTED
+  REOPEN_REQUESTED
+  REOPENED
+}
+
+enum NoticeAudience {
+  ALL
+  CLASS
+}
 
 model User {
   id String @id @default(cuid())
@@ -164,5 +189,23 @@ model Notice {
   createdAt DateTime @default(now())
 }
 
-model AdmissionEnquiry { id String @id @default(cuid()) studentName String parentName String email String phone String grade String message String? createdAt DateTime @default(now()) }
-model ContactMessage { id String @id @default(cuid()) name String email String phone String? subject String message String createdAt DateTime @default(now()) }
+model AdmissionEnquiry {
+  id          String   @id @default(cuid())
+  studentName String
+  parentName  String
+  email       String
+  phone       String
+  grade       String
+  message     String?
+  createdAt   DateTime @default(now())
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  createdAt DateTime @default(now())
+}
