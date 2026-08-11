@@ -5,3 +5,4 @@ dist
 *.tsbuildinfo
 apps/api/prisma/dev.db
 .tmp-student-import/
+tmp/

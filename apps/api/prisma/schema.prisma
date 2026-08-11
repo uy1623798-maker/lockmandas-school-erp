@@ -153,6 +153,9 @@ model AttendanceSession {
   state AttendanceState @default(DRAFT)
   markedById String
   submittedAt DateTime?
+  pdfData Bytes?
+  pdfFileName String?
+  pdfGeneratedAt DateTime?
   reopenReason String?
   class Class @relation(fields: [classId], references: [id])
   subject Subject @relation(fields: [subjectId], references: [id])
