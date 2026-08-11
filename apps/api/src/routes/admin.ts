@@ -125,6 +125,17 @@ adminRouter.post('/students/import', asyncRoute(async (q: any, r: any) => {
   return r.status(201).json({ classId: schoolClass.id, created, updated });
 }));
 
+adminRouter.post('/students/set-passwords', asyncRoute(async (q: any, r: any) => {
+  const body = z.object({ credentials: z.array(z.object({ admissionNo: z.string().min(1), password: z.string().length(8).regex(/^\d{8}$/) })).min(1).max(25) }).parse(q.body);
+  const admissionNos = body.credentials.map((credential) => credential.admissionNo);
+  const students = await prisma.student.findMany({ where: { admissionNo: { in: admissionNos } }, select: { admissionNo: true, userId: true } });
+  if (students.length !== body.credentials.length) return r.status(400).json({ message: 'One or more admission numbers were not found' });
+  const userByAdmission = new Map(students.map((student) => [student.admissionNo, student.userId]));
+  const updates = await Promise.all(body.credentials.map(async (credential) => ({ userId: userByAdmission.get(credential.admissionNo)!, passwordHash: await bcrypt.hash(credential.password, 12) })));
+  await prisma.$transaction(updates.map((update) => prisma.user.update({ where: { id: update.userId }, data: { passwordHash: update.passwordHash, refreshTokenHash: null, resetTokenHash: null, resetTokenExpires: null } })));
+  r.json({ updated: updates.length });
+}));
+
 adminRouter.post('/people', asyncRoute(async (q: any, r: any) => {
   const b = z.object({
     name: z.string(), username: z.string(), email: z.string().email(), password: z.string().min(8),
