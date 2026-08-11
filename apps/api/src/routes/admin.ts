@@ -131,7 +131,9 @@ adminRouter.post('/students/set-passwords', asyncRoute(async (q: any, r: any) =>
   const students = await prisma.student.findMany({ where: { admissionNo: { in: admissionNos } }, select: { admissionNo: true, userId: true } });
   if (students.length !== body.credentials.length) return r.status(400).json({ message: 'One or more admission numbers were not found' });
   const userByAdmission = new Map(students.map((student) => [student.admissionNo, student.userId]));
-  const updates = await Promise.all(body.credentials.map(async (credential) => ({ userId: userByAdmission.get(credential.admissionNo)!, passwordHash: await bcrypt.hash(credential.password, 12) })));
+  // Cost 10 keeps bulk student credential provisioning within hosted request limits
+  // while still storing a deliberately slow bcrypt hash (never the DOB itself).
+  const updates = await Promise.all(body.credentials.map(async (credential) => ({ userId: userByAdmission.get(credential.admissionNo)!, passwordHash: await bcrypt.hash(credential.password, 10) })));
   await prisma.$transaction(updates.map((update) => prisma.user.update({ where: { id: update.userId }, data: { passwordHash: update.passwordHash, refreshTokenHash: null, resetTokenHash: null, resetTokenExpires: null } })));
   r.json({ updated: updates.length });
 }));
