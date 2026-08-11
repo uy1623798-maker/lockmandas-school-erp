@@ -89,10 +89,17 @@ model Student {
   id String @id @default(cuid())
   userId String @unique
   admissionNo String @unique
+  sourceAdmissionNo String?
   classId String
   rollNo Int
+  dateOfBirth DateTime? @db.Date
+  fatherName String?
+  motherName String?
   parentName String?
   parentContact String?
+  address String?
+  aadhaarNo String?
+  penNo String?
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   class Class @relation(fields: [classId], references: [id])
   attendance AttendanceRecord[]
