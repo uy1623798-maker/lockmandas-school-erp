@@ -6,3 +6,45 @@ portalRouter.get('/marks',asyncRoute(async(q:any,r:any)=>{const s=q.user.role===
 portalRouter.post('/marks',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{const t=await prisma.teacher.findUnique({where:{userId:q.user.id}});const b=z.object({studentId:z.string(),subjectId:z.string(),exam:z.string(),score:z.number(),maximum:z.number()}).parse(q.body);r.status(201).json(await prisma.mark.upsert({where:{studentId_subjectId_exam:{studentId:b.studentId,subjectId:b.subjectId,exam:b.exam}},create:{...b,teacherId:t!.id},update:{score:b.score,maximum:b.maximum,teacherId:t!.id}}))}));
 portalRouter.get('/notices',asyncRoute(async(q:any,r:any)=>{const s=q.user.role==='STUDENT'?await prisma.student.findUnique({where:{userId:q.user.id}}):null;r.json(await prisma.notice.findMany({where:s?{OR:[{audience:'ALL'},{classId:s.classId}]}:{},include:{author:{select:{name:true}}},orderBy:{createdAt:'desc'}}))}));
 portalRouter.post('/notices',allow(Role.ADMIN,Role.TEACHER),asyncRoute(async(q:any,r:any)=>r.status(201).json(await prisma.notice.create({data:{...q.body,authorId:q.user.id}}))));
+
+portalRouter.get('/tc/teacher/students',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
+  const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
+  const assignments=await prisma.teachingAssignment.findMany({where:{teacherId:teacher!.id},select:{classId:true}});
+  const classIds=[...new Set(assignments.map(x=>x.classId))];
+  const classes=await prisma.class.findMany({where:{id:{in:classIds}},include:{students:{orderBy:{rollNo:'asc'},include:{user:{select:{name:true}},transferCertificate:{select:{id:true,fileName:true,fileSize:true,uploadedAt:true}}}}},orderBy:[{name:'asc'},{section:'asc'}]});
+  r.json(classes);
+}));
+
+portalRouter.get('/tc/me',allow(Role.STUDENT),asyncRoute(async(q:any,r:any)=>{
+  const student=await prisma.student.findUnique({where:{userId:q.user.id}});
+  const certificate=await prisma.transferCertificate.findUnique({where:{studentId:student!.id},select:{id:true,fileName:true,fileSize:true,uploadedAt:true,updatedAt:true}});
+  r.json(certificate);
+}));
+
+portalRouter.post('/tc',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
+  const body=z.object({studentId:z.string(),fileName:z.string().trim().min(1).max(180),data:z.string().min(8).max(7_000_000)}).parse(q.body);
+  const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
+  const student=await prisma.student.findUnique({where:{id:body.studentId}});
+  if(!student)return r.status(404).json({message:'Student not found'});
+  const assigned=await prisma.teachingAssignment.findFirst({where:{teacherId:teacher!.id,classId:student.classId}});
+  if(!assigned)return r.status(403).json({message:'This student is not in your assigned classes'});
+  const fileData=Buffer.from(body.data,'base64');
+  if(fileData.length>5*1024*1024)return r.status(413).json({message:'PDF must be 5 MB or smaller'});
+  if(fileData.subarray(0,5).toString()!=='%PDF-')return r.status(400).json({message:'Only a valid PDF file can be uploaded'});
+  const fileName=(body.fileName.replace(/[^a-zA-Z0-9._ -]/g,'_').slice(0,180)||'transfer-certificate.pdf').replace(/\.pdf$/i,'')+'.pdf';
+  const certificate=await prisma.transferCertificate.upsert({where:{studentId:student.id},create:{studentId:student.id,fileName,mimeType:'application/pdf',fileData,fileSize:fileData.length,uploadedById:teacher!.id},update:{fileName,mimeType:'application/pdf',fileData,fileSize:fileData.length,uploadedById:teacher!.id,uploadedAt:new Date()},select:{id:true,fileName:true,fileSize:true,uploadedAt:true}});
+  r.status(201).json(certificate);
+}));
+
+portalRouter.get('/tc/:id/download',asyncRoute(async(q:any,r:any)=>{
+  const certificate=await prisma.transferCertificate.findUnique({where:{id:q.params.id},include:{student:true}});
+  if(!certificate)return r.status(404).json({message:'Transfer certificate not found'});
+  let permitted=q.user.role===Role.ADMIN;
+  if(q.user.role===Role.STUDENT)permitted=certificate.student.userId===q.user.id;
+  if(q.user.role===Role.TEACHER){const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});permitted=!!await prisma.teachingAssignment.findFirst({where:{teacherId:teacher!.id,classId:certificate.student.classId}})}
+  if(!permitted)return r.status(403).json({message:'This transfer certificate is not available to you'});
+  r.setHeader('Content-Type','application/pdf');
+  r.setHeader('Content-Length',certificate.fileSize);
+  r.setHeader('Content-Disposition',`attachment; filename="${certificate.fileName.replace(/["\\]/g,'_')}"`);
+  r.send(Buffer.from(certificate.fileData));
+}));
