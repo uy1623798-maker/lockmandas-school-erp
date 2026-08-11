@@ -32,7 +32,7 @@ export default function Login() {
   return <main className="login-page">
     <section className="login-art">
       <a className="powered-brand" href="https://www.wetakefwd.online" target="_blank" rel="noreferrer" aria-label="Visit We Take FWD">
-        <span className="powered-logo-frame"><img src="/wetakefwd-logo.png" alt="We Take FWD" /></span>
+        <span className="powered-logo-frame"><img src="/wetakefwd-3d-symbol.png" alt="We Take FWD 3D symbol" /></span>
         <small>POWERED BY</small>
         <strong>WeTakeFWD ERP</strong>
         <em>www.wetakefwd.online</em>
