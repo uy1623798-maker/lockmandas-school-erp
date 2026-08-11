@@ -15,17 +15,34 @@ async function main() {
     update: {},
     create: { name: 'Class 8', section: 'A', academicYearId: year.id },
   });
-  const generalSubject = await prisma.subject.upsert({
-    where: { code: 'CLASS-ATT' },
-    update: { name: 'Class Attendance' },
-    create: { name: 'Class Attendance', code: 'CLASS-ATT' },
-  });
+  const subjectCatalogue = [
+    ['ENG', 'English'],
+    ['HIN', 'Hindi'],
+    ['MATH', 'Mathematics'],
+    ['EVS', 'Environmental Studies'],
+    ['SCI', 'Science'],
+    ['SST', 'Social Science'],
+    ['SAN', 'Sanskrit'],
+    ['COMP', 'Computer Science'],
+    ['GK', 'General Knowledge'],
+    ['PE', 'Physical Education'],
+    ['ART', 'Art & Craft'],
+    ['MUS', 'Music'],
+    ['MORAL', 'Moral Education'],
+    ['CLASS-ATT', 'Class Attendance'],
+  ] as const;
+  const subjects = await Promise.all(subjectCatalogue.map(([code, name]) => prisma.subject.upsert({
+    where: { code },
+    update: { name },
+    create: { name, code },
+  })));
+  const generalSubject = subjects.find(subject => subject.code === 'CLASS-ATT')!;
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@lokmandas.edu' }, update: {},
+    where: { username: 'admin' }, update: { email: 'admin@lokmandas.edu' },
     create: { name: 'School Administrator', username: 'admin', email: 'admin@lokmandas.edu', passwordHash, role: 'ADMIN' },
   });
   const teacherUser = await prisma.user.upsert({
-    where: { email: 'teacher@lokmandas.edu' }, update: {},
+    where: { username: 'teacher' }, update: { email: 'teacher@lokmandas.edu' },
     create: { name: 'Anita Sharma', username: 'teacher', email: 'teacher@lokmandas.edu', passwordHash, role: 'TEACHER' },
   });
   const teacher = await prisma.teacher.upsert({
@@ -49,7 +66,7 @@ async function main() {
     const names = ['Aarav Mehta', 'Diya Kapoor', 'Ishaan Verma', 'Meera Nair', 'Kabir Singh', 'Anaya Rao', 'Vivaan Joshi', 'Sara Khan'];
     for (let index = 1; index <= names.length; index += 1) {
       const user = await prisma.user.upsert({
-        where: { email: `student${index}@lokmandas.edu` }, update: {},
+        where: { username: `student${index}` }, update: { email: `student${index}@lokmandas.edu` },
         create: { name: names[index - 1], username: `student${index}`, email: `student${index}@lokmandas.edu`, passwordHash, role: 'STUDENT' },
       });
       await prisma.student.upsert({
