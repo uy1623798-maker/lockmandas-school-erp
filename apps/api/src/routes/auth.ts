@@ -8,8 +8,15 @@ import { env } from '../config.js';
 export const authRouter = Router();
 const cookie = { httpOnly: true, sameSite: 'lax' as const, secure: process.env.NODE_ENV === 'production', maxAge: 7 * 864e5 };
 authRouter.post('/login', asyncRoute(async (req: any, res: any) => {
-  const b = z.object({ login: z.string().min(3), password: z.string().min(6) }).parse(req.body);
-  const user = await prisma.user.findFirst({ where: { OR: [{ email: b.login.toLowerCase() }, { username: b.login }] } });
+  const b = z.object({ login: z.string().trim().min(3), password: z.string().min(6) }).parse(req.body);
+  let user = await prisma.user.findFirst({ where: { OR: [{ email: b.login.toLowerCase() }, { username: b.login }] } });
+  if (!user) {
+    const student = await prisma.student.findFirst({
+      where: { admissionNo: { in: [...new Set([b.login, b.login.toUpperCase()])] } },
+      include: { user: true },
+    });
+    user = student?.user ?? null;
+  }
   if (!user || !(await bcrypt.compare(b.password, user.passwordHash))) return res.status(401).json({ message: 'Invalid credentials' });
   const payload = { id: user.id, role: user.role }; const refresh = signRefresh(payload);
   await prisma.user.update({ where: { id: user.id }, data: { refreshTokenHash: await bcrypt.hash(refresh, 10) } });
