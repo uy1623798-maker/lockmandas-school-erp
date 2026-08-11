@@ -1,8 +1,65 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-const p = new PrismaClient();
-async function main() { const passwordHash = await bcrypt.hash('School@123', 12); const year = await p.academicYear.upsert({ where: { name: '2026-27' }, update: { active: true }, create: { name: '2026-27', startsOn: new Date('2026-04-01'), endsOn: new Date('2027-03-31'), active: true } }); const cls = await p.class.upsert({ where: { name_section_academicYearId: { name: 'Class 8', section: 'A', academicYearId: year.id } }, update: {}, create: { name: 'Class 8', section: 'A', academicYearId: year.id } }); const subject = await p.subject.upsert({ where: { code: 'MATH8' }, update: {}, create: { name: 'Mathematics', code: 'MATH8' } }); const admin = await p.user.upsert({ where: { email: 'admin@lockmandas.edu' }, update: {}, create: { name: 'School Administrator', username: 'admin', email: 'admin@lockmandas.edu', passwordHash, role: 'ADMIN' } }); const tu = await p.user.upsert({ where: { email: 'teacher@lockmandas.edu' }, update: {}, create: { name: 'Anita Sharma', username: 'teacher', email: 'teacher@lockmandas.edu', passwordHash, role: 'TEACHER' } }); const teacher = await p.teacher.upsert({ where: { userId: tu.id }, update: {}, create: { userId: tu.id, employeeNo: 'T-1001', qualification: 'M.Sc., B.Ed.' } }); await p.teachingAssignment.upsert({ where: { teacherId_classId_subjectId: { teacherId: teacher.id, classId: cls.id, subjectId: subject.id } }, update: {}, create: { teacherId: teacher.id, classId: cls.id, subjectId: subject.id } }); if (await p.student.count({ where: { classId: cls.id } }) === 0) { for (let i = 1; i <= 8; i++) {
-    const u = await p.user.upsert({ where: { email: `student${i}@lockmandas.edu` }, update: {}, create: { name: ['Aarav Mehta', 'Diya Kapoor', 'Ishaan Verma', 'Meera Nair', 'Kabir Singh', 'Anaya Rao', 'Vivaan Joshi', 'Sara Khan'][i - 1], username: `student${i}`, email: `student${i}@lockmandas.edu`, passwordHash, role: 'STUDENT' } });
-    await p.student.upsert({ where: { userId: u.id }, update: {}, create: { userId: u.id, admissionNo: `DLP-26-${String(i).padStart(3, '0')}`, classId: cls.id, rollNo: i, parentContact: '9876543210' } });
-} } console.log({ admin: admin.email, password: 'School@123' }); }
-main().finally(() => p.$disconnect());
+
+const prisma = new PrismaClient();
+
+async function main() {
+  const passwordHash = await bcrypt.hash('School@123', 12);
+  const year = await prisma.academicYear.upsert({
+    where: { name: '2026-27' },
+    update: { active: true },
+    create: { name: '2026-27', startsOn: new Date('2026-04-01'), endsOn: new Date('2027-03-31'), active: true },
+  });
+  const classEight = await prisma.class.upsert({
+    where: { name_section_academicYearId: { name: 'Class 8', section: 'A', academicYearId: year.id } },
+    update: {},
+    create: { name: 'Class 8', section: 'A', academicYearId: year.id },
+  });
+  const generalSubject = await prisma.subject.upsert({
+    where: { code: 'CLASS-ATT' },
+    update: { name: 'Class Attendance' },
+    create: { name: 'Class Attendance', code: 'CLASS-ATT' },
+  });
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@lockmandas.edu' }, update: {},
+    create: { name: 'School Administrator', username: 'admin', email: 'admin@lockmandas.edu', passwordHash, role: 'ADMIN' },
+  });
+  const teacherUser = await prisma.user.upsert({
+    where: { email: 'teacher@lockmandas.edu' }, update: {},
+    create: { name: 'Anita Sharma', username: 'teacher', email: 'teacher@lockmandas.edu', passwordHash, role: 'TEACHER' },
+  });
+  const teacher = await prisma.teacher.upsert({
+    where: { userId: teacherUser.id }, update: {},
+    create: { userId: teacherUser.id, employeeNo: 'T-1001', qualification: 'M.Sc., B.Ed.' },
+  });
+
+  const legacyMath = await prisma.subject.findUnique({ where: { code: 'MATH8' } });
+  if (legacyMath) await prisma.teachingAssignment.deleteMany({ where: { teacherId: teacher.id, subjectId: legacyMath.id } });
+
+  const currentClasses = await prisma.class.findMany({ where: { academicYearId: year.id }, select: { id: true } });
+  for (const schoolClass of currentClasses) {
+    await prisma.teachingAssignment.upsert({
+      where: { teacherId_classId_subjectId: { teacherId: teacher.id, classId: schoolClass.id, subjectId: generalSubject.id } },
+      update: {},
+      create: { teacherId: teacher.id, classId: schoolClass.id, subjectId: generalSubject.id },
+    });
+  }
+
+  if (await prisma.student.count({ where: { classId: classEight.id } }) === 0) {
+    const names = ['Aarav Mehta', 'Diya Kapoor', 'Ishaan Verma', 'Meera Nair', 'Kabir Singh', 'Anaya Rao', 'Vivaan Joshi', 'Sara Khan'];
+    for (let index = 1; index <= names.length; index += 1) {
+      const user = await prisma.user.upsert({
+        where: { email: `student${index}@lockmandas.edu` }, update: {},
+        create: { name: names[index - 1], username: `student${index}`, email: `student${index}@lockmandas.edu`, passwordHash, role: 'STUDENT' },
+      });
+      await prisma.student.upsert({
+        where: { userId: user.id }, update: {},
+        create: { userId: user.id, admissionNo: `DLP-26-${String(index).padStart(3, '0')}`, classId: classEight.id, rollNo: index, parentContact: '9876543210' },
+      });
+    }
+  }
+
+  console.log({ admin: admin.email, teacherAssignments: currentClasses.length });
+}
+
+main().finally(() => prisma.$disconnect());
