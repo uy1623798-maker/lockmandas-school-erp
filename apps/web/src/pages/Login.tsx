@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, BookOpen, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Lock, Mail } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 import { api } from '../api';
@@ -31,9 +31,12 @@ export default function Login() {
 
   return <main className="login-page">
     <section className="login-art">
-      <Link className="brand light" to="/"><span className="crest"><BookOpen /></span><span><b>Dr. Lockmandas</b><small>PUBLIC SCHOOL</small></span></Link>
-      <div><p>ONE SCHOOL. ONE COMMUNITY.</p><h1>Everything you need,<br /><em>all in one place.</em></h1><span>Attendance, academics, timetables, and school updates — simple, secure, connected.</span></div>
-      <a className="maker-credit" href="https://www.wetakefwd.online" target="_blank" rel="noreferrer"><img src="/wetakefwd-logo.png" alt="We Take FWD" /><span><small>MADE BY</small><b>We Take FWD</b><em>www.wetakefwd.online</em></span></a>
+      <a className="powered-brand" href="https://www.wetakefwd.online" target="_blank" rel="noreferrer" aria-label="Visit We Take FWD">
+        <span className="powered-logo-frame"><img src="/wetakefwd-logo.png" alt="We Take FWD" /></span>
+        <small>POWERED BY</small>
+        <strong>WeTakeFWD ERP</strong>
+        <em>www.wetakefwd.online</em>
+      </a>
     </section>
     <section className="login-panel"><div className="login-box">
       <Link className="back" to="/"><ArrowLeft /> Back to school website</Link>
