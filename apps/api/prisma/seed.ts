@@ -21,12 +21,12 @@ async function main() {
     create: { name: 'Class Attendance', code: 'CLASS-ATT' },
   });
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@lockmandas.edu' }, update: {},
-    create: { name: 'School Administrator', username: 'admin', email: 'admin@lockmandas.edu', passwordHash, role: 'ADMIN' },
+    where: { email: 'admin@lokmandas.edu' }, update: {},
+    create: { name: 'School Administrator', username: 'admin', email: 'admin@lokmandas.edu', passwordHash, role: 'ADMIN' },
   });
   const teacherUser = await prisma.user.upsert({
-    where: { email: 'teacher@lockmandas.edu' }, update: {},
-    create: { name: 'Anita Sharma', username: 'teacher', email: 'teacher@lockmandas.edu', passwordHash, role: 'TEACHER' },
+    where: { email: 'teacher@lokmandas.edu' }, update: {},
+    create: { name: 'Anita Sharma', username: 'teacher', email: 'teacher@lokmandas.edu', passwordHash, role: 'TEACHER' },
   });
   const teacher = await prisma.teacher.upsert({
     where: { userId: teacherUser.id }, update: {},
@@ -49,8 +49,8 @@ async function main() {
     const names = ['Aarav Mehta', 'Diya Kapoor', 'Ishaan Verma', 'Meera Nair', 'Kabir Singh', 'Anaya Rao', 'Vivaan Joshi', 'Sara Khan'];
     for (let index = 1; index <= names.length; index += 1) {
       const user = await prisma.user.upsert({
-        where: { email: `student${index}@lockmandas.edu` }, update: {},
-        create: { name: names[index - 1], username: `student${index}`, email: `student${index}@lockmandas.edu`, passwordHash, role: 'STUDENT' },
+        where: { email: `student${index}@lokmandas.edu` }, update: {},
+        create: { name: names[index - 1], username: `student${index}`, email: `student${index}@lokmandas.edu`, passwordHash, role: 'STUDENT' },
       });
       await prisma.student.upsert({
         where: { userId: user.id }, update: {},

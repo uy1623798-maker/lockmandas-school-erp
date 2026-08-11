@@ -109,7 +109,7 @@ adminRouter.post('/students/import', asyncRoute(async (q: any, r: any) => {
           data: {
             name: student.name,
             username: `student_${key}`,
-            email: `student_${key}@lockmandas.edu`,
+            email: `student_${key}@lokmandas.edu`,
             passwordHash,
             role: Role.STUDENT,
           },

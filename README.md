@@ -1,4 +1,4 @@
-# Dr. Lockmandas Public School ERP
+# Dr. Lokmandas Public School ERP
 
 A full-stack school website and role-based ERP built with React, Express, Prisma, PostgreSQL, JWT, and bcrypt.
 
