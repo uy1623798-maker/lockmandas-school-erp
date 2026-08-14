@@ -10,14 +10,41 @@ portalRouter.get('/marks',asyncRoute(async(q:any,r:any)=>{
 
 portalRouter.get('/marks/teacher/assignments',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
   const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
-  r.json(await prisma.teachingAssignment.findMany({where:{teacherId:teacher!.id},include:{class:true,subject:true},orderBy:[{class:{name:'asc'}},{class:{section:'asc'}},{subject:{name:'asc'}}]}));
+  r.json(await prisma.teachingAssignment.findMany({where:{teacherId:teacher!.id,subject:{code:{notIn:['CLASS-ATT','MATH8']}}},include:{class:true,subject:true},orderBy:[{class:{name:'asc'}},{class:{section:'asc'}},{subject:{name:'asc'}}]}));
+}));
+
+portalRouter.get('/marks/teacher/options',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
+  const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
+  const access=await prisma.teachingAssignment.findMany({where:{teacherId:teacher!.id},select:{classId:true}});
+  const classIds=[...new Set(access.map(x=>x.classId))];
+  const [classes,subjects]=await Promise.all([
+    prisma.class.findMany({where:{id:{in:classIds}},orderBy:[{name:'asc'},{section:'asc'}]}),
+    prisma.subject.findMany({where:{code:{notIn:['CLASS-ATT','MATH8']}},orderBy:{name:'asc'}}),
+  ]);
+  r.json({classes,subjects});
+}));
+
+portalRouter.post('/marks/teacher/assignments',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
+  const body=z.object({classId:z.string(),subjectId:z.string()}).parse(q.body);
+  const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
+  const [classAccess,subject]=await Promise.all([
+    prisma.teachingAssignment.findFirst({where:{teacherId:teacher!.id,classId:body.classId}}),
+    prisma.subject.findUnique({where:{id:body.subjectId}}),
+  ]);
+  if(!classAccess)return r.status(403).json({message:'This class is not assigned to you'});
+  if(!subject||['CLASS-ATT','MATH8'].includes(subject.code))return r.status(400).json({message:'Select a valid academic subject'});
+  const assignment=await prisma.teachingAssignment.upsert({
+    where:{teacherId_classId_subjectId:{teacherId:teacher!.id,classId:body.classId,subjectId:body.subjectId}},
+    update:{},create:{teacherId:teacher!.id,classId:body.classId,subjectId:body.subjectId},include:{class:true,subject:true},
+  });
+  r.status(201).json(assignment);
 }));
 
 portalRouter.get('/marks/register',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
   const query=z.object({assignmentId:z.string(),exam:z.string().trim().min(1).max(80)}).parse(q.query);
   const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
   const assignment=await prisma.teachingAssignment.findFirst({where:{id:query.assignmentId,teacherId:teacher!.id},include:{class:true,subject:true}});
-  if(!assignment)return r.status(403).json({message:'This class and subject are not assigned to you'});
+  if(!assignment||['CLASS-ATT','MATH8'].includes(assignment.subject.code))return r.status(403).json({message:'This academic subject is not assigned to you'});
   const students=await prisma.student.findMany({where:{classId:assignment.classId},include:{user:{select:{name:true}},marks:{where:{subjectId:assignment.subjectId,exam:query.exam},select:{score:true,maximum:true}}},orderBy:{rollNo:'asc'}});
   r.json({assignment,students:students.map(({marks,...student})=>({...student,mark:marks[0]||null}))});
 }));
@@ -25,8 +52,9 @@ portalRouter.get('/marks/register',allow(Role.TEACHER),asyncRoute(async(q:any,r:
 portalRouter.post('/marks/bulk',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
   const body=z.object({assignmentId:z.string(),exam:z.string().trim().min(1).max(80),maximum:z.number().positive().max(1000),marks:z.array(z.object({studentId:z.string(),score:z.number().min(0)})).min(1)}).superRefine((value,ctx)=>{value.marks.forEach((mark,index)=>{if(mark.score>value.maximum)ctx.addIssue({code:z.ZodIssueCode.custom,path:['marks',index,'score'],message:'Score cannot exceed maximum marks'})})}).parse(q.body);
   const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
-  const assignment=await prisma.teachingAssignment.findFirst({where:{id:body.assignmentId,teacherId:teacher!.id}});
+  const assignment=await prisma.teachingAssignment.findFirst({where:{id:body.assignmentId,teacherId:teacher!.id},include:{subject:true}});
   if(!assignment)return r.status(403).json({message:'This class and subject are not assigned to you'});
+  if(['CLASS-ATT','MATH8'].includes(assignment.subject.code))return r.status(400).json({message:'Marks cannot be entered for the attendance subject'});
   const validStudents=await prisma.student.findMany({where:{classId:assignment.classId,id:{in:body.marks.map(x=>x.studentId)}},select:{id:true}});
   if(validStudents.length!==body.marks.length)return r.status(400).json({message:'One or more students do not belong to the selected class'});
   await prisma.$transaction(body.marks.map(mark=>prisma.mark.upsert({where:{studentId_subjectId_exam:{studentId:mark.studentId,subjectId:assignment.subjectId,exam:body.exam}},create:{studentId:mark.studentId,subjectId:assignment.subjectId,exam:body.exam,score:mark.score,maximum:body.maximum,teacherId:teacher!.id},update:{score:mark.score,maximum:body.maximum,teacherId:teacher!.id}})));
@@ -75,4 +103,50 @@ portalRouter.get('/tc/:id/download',asyncRoute(async(q:any,r:any)=>{
   r.setHeader('Content-Length',certificate.fileSize);
   r.setHeader('Content-Disposition',`attachment; filename="${certificate.fileName.replace(/["\\]/g,'_')}"`);
   r.send(Buffer.from(certificate.fileData));
+}));
+
+portalRouter.get('/report-cards/teacher/students',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
+  const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
+  const assignments=await prisma.teachingAssignment.findMany({where:{teacherId:teacher!.id},select:{classId:true}});
+  const classIds=[...new Set(assignments.map(x=>x.classId))];
+  const classes=await prisma.class.findMany({where:{id:{in:classIds}},include:{students:{orderBy:{rollNo:'asc'},include:{user:{select:{name:true}},reportCards:{select:{id:true,title:true,fileName:true,fileSize:true,uploadedAt:true},orderBy:{uploadedAt:'desc'}}}}},orderBy:[{name:'asc'},{section:'asc'}]});
+  r.json(classes);
+}));
+
+portalRouter.get('/report-cards/me',allow(Role.STUDENT),asyncRoute(async(q:any,r:any)=>{
+  const student=await prisma.student.findUnique({where:{userId:q.user.id}});
+  r.json(await prisma.reportCard.findMany({where:{studentId:student!.id},select:{id:true,title:true,fileName:true,fileSize:true,uploadedAt:true,updatedAt:true},orderBy:{uploadedAt:'desc'}}));
+}));
+
+portalRouter.post('/report-cards',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
+  const body=z.object({studentId:z.string(),title:z.string().trim().min(2).max(80),fileName:z.string().trim().min(1).max(180),data:z.string().min(8).max(7_000_000)}).parse(q.body);
+  const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});
+  const student=await prisma.student.findUnique({where:{id:body.studentId}});
+  if(!student)return r.status(404).json({message:'Student not found'});
+  const assigned=await prisma.teachingAssignment.findFirst({where:{teacherId:teacher!.id,classId:student.classId}});
+  if(!assigned)return r.status(403).json({message:'This student is not in your assigned classes'});
+  const fileData=Buffer.from(body.data,'base64');
+  if(fileData.length>5*1024*1024)return r.status(413).json({message:'Report card PDF must be 5 MB or smaller'});
+  if(fileData.subarray(0,5).toString()!=='%PDF-')return r.status(400).json({message:'Only a valid PDF report card can be uploaded'});
+  const fileName=(body.fileName.replace(/[^a-zA-Z0-9._ -]/g,'_').slice(0,180)||'report-card.pdf').replace(/\.pdf$/i,'')+'.pdf';
+  const reportCard=await prisma.reportCard.upsert({
+    where:{studentId_title:{studentId:student.id,title:body.title}},
+    create:{studentId:student.id,title:body.title,fileName,mimeType:'application/pdf',fileData,fileSize:fileData.length,uploadedById:teacher!.id},
+    update:{fileName,mimeType:'application/pdf',fileData,fileSize:fileData.length,uploadedById:teacher!.id,uploadedAt:new Date()},
+    select:{id:true,title:true,fileName:true,fileSize:true,uploadedAt:true},
+  });
+  r.status(201).json(reportCard);
+}));
+
+portalRouter.get('/report-cards/:id/download',asyncRoute(async(q:any,r:any)=>{
+  const reportCard=await prisma.reportCard.findUnique({where:{id:q.params.id},include:{student:true}});
+  if(!reportCard)return r.status(404).json({message:'Report card not found'});
+  let permitted=q.user.role===Role.ADMIN;
+  if(q.user.role===Role.STUDENT)permitted=reportCard.student.userId===q.user.id;
+  if(q.user.role===Role.TEACHER){const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});permitted=!!await prisma.teachingAssignment.findFirst({where:{teacherId:teacher!.id,classId:reportCard.student.classId}})}
+  if(!permitted)return r.status(403).json({message:'This report card is not available to you'});
+  r.setHeader('Content-Type','application/pdf');
+  r.setHeader('Content-Length',reportCard.fileSize);
+  r.setHeader('Content-Disposition',`attachment; filename="${reportCard.fileName.replace(/["\\]/g,'_')}"`);
+  r.send(Buffer.from(reportCard.fileData));
 }));

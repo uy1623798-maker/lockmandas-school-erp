@@ -106,6 +106,7 @@ model Teacher {
   markedSessions AttendanceSession[] @relation("MarkedBy")
   marks Mark[] @relation("MarkedByTeacher")
   transferCertificates TransferCertificate[]
+  reportCards ReportCard[]
 }
 
 model Student {
@@ -128,6 +129,7 @@ model Student {
   attendance AttendanceRecord[]
   marks Mark[]
   transferCertificate TransferCertificate?
+  reportCards ReportCard[]
   @@unique([classId, rollNo])
 }
 
@@ -143,6 +145,22 @@ model TransferCertificate {
   updatedAt DateTime @updatedAt
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   uploadedBy Teacher @relation(fields: [uploadedById], references: [id])
+}
+
+model ReportCard {
+  id String @id @default(cuid())
+  studentId String
+  title String
+  fileName String
+  mimeType String @default("application/pdf")
+  fileData Bytes
+  fileSize Int
+  uploadedById String
+  uploadedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  uploadedBy Teacher @relation(fields: [uploadedById], references: [id])
+  @@unique([studentId, title])
 }
 
 model Subject {
