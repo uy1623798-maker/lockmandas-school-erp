@@ -33,6 +33,17 @@ adminRouter.get('/students', asyncRoute(async (_q: any, r: any) => r.json(await 
 }))));
 
 const optionalText = z.string().trim().optional().nullable();
+
+function attendanceClassIds(classesTaught: string | null | undefined, classes: Array<{ id: string; name: string }>) {
+  const tokens = new Set(String(classesTaught || '').toUpperCase().split(',').map((value) => value.trim()).filter(Boolean));
+  const grades = new Set([...tokens].filter((value) => /^\d{1,2}$/.test(value)).map(Number));
+  const includesKg = tokens.has('KG');
+  return classes.filter((schoolClass) => {
+    const match = schoolClass.name.match(/^Class\s+(\d{1,2})$/i);
+    if (match && grades.has(Number(match[1]))) return true;
+    return includesKg && /^(Nursery|LKG|UKG)$/i.test(schoolClass.name);
+  }).map((schoolClass) => schoolClass.id);
+}
 const importTeacherSchema = z.object({
   employeeNo: z.string().trim().min(1),
   name: z.string().trim().min(1),
@@ -70,6 +81,10 @@ adminRouter.post('/teachers/import', asyncRoute(async (q: any, r: any) => {
   }));
   let created = 0;
   let updated = 0;
+  const [attendanceSubject, classes] = await Promise.all([
+    prisma.subject.findUnique({ where: { code: 'CLASS-ATT' } }),
+    prisma.class.findMany({ select: { id: true, name: true } }),
+  ]);
 
   await prisma.$transaction(async (tx) => {
     for (const { teacher, passwordHash } of prepared) {
@@ -84,17 +99,38 @@ adminRouter.post('/teachers/import', asyncRoute(async (q: any, r: any) => {
         });
       const { name: _name, dateOfBirth, ...profile } = teacher;
       const data = { ...profile, dateOfBirth: new Date(`${dateOfBirth}T00:00:00.000Z`) };
+      let teacherRecord;
       if (existing) {
-        await tx.teacher.update({ where: { id: existing.id }, data });
+        teacherRecord = await tx.teacher.update({ where: { id: existing.id }, data });
         updated += 1;
       } else {
-        await tx.teacher.create({ data: { userId: account.id, ...data } });
+        teacherRecord = await tx.teacher.create({ data: { userId: account.id, ...data } });
         created += 1;
+      }
+      const classIds = attendanceClassIds(teacher.classesTaught, classes);
+      if (attendanceSubject && classIds.length) {
+        await tx.teachingAssignment.createMany({
+          data: classIds.map((classId) => ({ teacherId: teacherRecord.id, classId, subjectId: attendanceSubject.id })),
+          skipDuplicates: true,
+        });
       }
     }
   }, { timeout: 30000 });
 
   r.status(201).json({ created, updated });
+}));
+
+adminRouter.post('/teachers/backfill-attendance-assignments', asyncRoute(async (_q: any, r: any) => {
+  const [attendanceSubject, classes, teachers] = await Promise.all([
+    prisma.subject.findUnique({ where: { code: 'CLASS-ATT' } }),
+    prisma.class.findMany({ select: { id: true, name: true } }),
+    prisma.teacher.findMany({ select: { id: true, classesTaught: true } }),
+  ]);
+  if (!attendanceSubject) return r.status(400).json({ message: 'Class Attendance subject is missing' });
+  const data = teachers.flatMap((teacher) => attendanceClassIds(teacher.classesTaught, classes)
+    .map((classId) => ({ teacherId: teacher.id, classId, subjectId: attendanceSubject.id })));
+  const result = data.length ? await prisma.teachingAssignment.createMany({ data, skipDuplicates: true }) : { count: 0 };
+  r.json({ created: result.count, teachersMatched: teachers.filter((teacher) => attendanceClassIds(teacher.classesTaught, classes).length).length });
 }));
 
 const importStudentSchema = z.object({
