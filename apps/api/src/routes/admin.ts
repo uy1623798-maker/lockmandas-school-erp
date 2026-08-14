@@ -32,6 +32,71 @@ adminRouter.get('/students', asyncRoute(async (_q: any, r: any) => r.json(await 
   include: { user: true, class: true },
 }))));
 
+const optionalText = z.string().trim().optional().nullable();
+const importTeacherSchema = z.object({
+  employeeNo: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  phone: optionalText,
+  gender: optionalText,
+  dateOfBirth: z.string().date(),
+  designation: optionalText,
+  qualification: optionalText,
+  professionalQualification: optionalText,
+  computerKnowledge: optionalText,
+  classesTaught: optionalText,
+  bankName: optionalText,
+  bankAccountNo: optionalText,
+  bankIfsc: optionalText,
+  class10Subject1: optionalText,
+  class10Experience1: optionalText,
+  class10Subject2: optionalText,
+  class10Experience2: optionalText,
+  class12Subject1: optionalText,
+  class12Experience1: optionalText,
+  class12Subject2: optionalText,
+  class12Experience2: optionalText,
+  wardAppear10: z.boolean().default(false),
+  wardAppear12: z.boolean().default(false),
+  evaluationMedium: optionalText,
+  specialEdRciNo: optionalText,
+  teachingShift: optionalText,
+});
+
+adminRouter.post('/teachers/import', asyncRoute(async (q: any, r: any) => {
+  const body = z.object({ teachers: z.array(importTeacherSchema).min(1).max(100) }).parse(q.body);
+  const prepared = await Promise.all(body.teachers.map(async (teacher) => {
+    const [year, month, day] = teacher.dateOfBirth.split('-');
+    return { teacher, passwordHash: await bcrypt.hash(`${day}${month}${year}`, 10) };
+  }));
+  let created = 0;
+  let updated = 0;
+
+  await prisma.$transaction(async (tx) => {
+    for (const { teacher, passwordHash } of prepared) {
+      const existing = await tx.teacher.findUnique({ where: { employeeNo: teacher.employeeNo } });
+      const account = existing
+        ? await tx.user.update({
+          where: { id: existing.userId },
+          data: { name: teacher.name, username: teacher.employeeNo, passwordHash, role: Role.TEACHER, refreshTokenHash: null, resetTokenHash: null, resetTokenExpires: null },
+        })
+        : await tx.user.create({
+          data: { name: teacher.name, username: teacher.employeeNo, email: `teacher_${teacher.employeeNo}@lokmandas.edu`, passwordHash, role: Role.TEACHER },
+        });
+      const { name: _name, dateOfBirth, ...profile } = teacher;
+      const data = { ...profile, dateOfBirth: new Date(`${dateOfBirth}T00:00:00.000Z`) };
+      if (existing) {
+        await tx.teacher.update({ where: { id: existing.id }, data });
+        updated += 1;
+      } else {
+        await tx.teacher.create({ data: { userId: account.id, ...data } });
+        created += 1;
+      }
+    }
+  }, { timeout: 30000 });
+
+  r.status(201).json({ created, updated });
+}));
+
 const importStudentSchema = z.object({
   admissionNo: z.string().trim().min(1),
   sourceAdmissionNo: z.string().trim().optional().nullable(),

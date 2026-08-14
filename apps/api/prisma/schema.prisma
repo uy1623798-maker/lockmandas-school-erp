@@ -77,7 +77,29 @@ model Teacher {
   userId String @unique
   employeeNo String @unique
   phone String?
+  gender String?
+  dateOfBirth DateTime? @db.Date
+  designation String?
   qualification String?
+  professionalQualification String?
+  computerKnowledge String?
+  classesTaught String?
+  bankName String?
+  bankAccountNo String?
+  bankIfsc String?
+  class10Subject1 String?
+  class10Experience1 String?
+  class10Subject2 String?
+  class10Experience2 String?
+  class12Subject1 String?
+  class12Experience1 String?
+  class12Subject2 String?
+  class12Experience2 String?
+  wardAppear10 Boolean @default(false)
+  wardAppear12 Boolean @default(false)
+  evaluationMedium String?
+  specialEdRciNo String?
+  teachingShift String?
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments TeachingAssignment[]
   timetable TimetableEntry[]

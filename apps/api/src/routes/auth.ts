@@ -17,6 +17,13 @@ authRouter.post('/login', asyncRoute(async (req: any, res: any) => {
     });
     user = student?.user ?? null;
   }
+  if (!user) {
+    const teacher = await prisma.teacher.findUnique({
+      where: { employeeNo: b.login },
+      include: { user: true },
+    });
+    user = teacher?.user ?? null;
+  }
   if (!user || !(await bcrypt.compare(b.password, user.passwordHash))) return res.status(401).json({ message: 'Invalid credentials' });
   const payload = { id: user.id, role: user.role }; const refresh = signRefresh(payload);
   await prisma.user.update({ where: { id: user.id }, data: { refreshTokenHash: await bcrypt.hash(refresh, 10) } });
