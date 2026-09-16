@@ -4,7 +4,12 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  const passwordHash = await bcrypt.hash('School@123', 12);
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
+    throw new Error('Demo seed is disabled in production. Set ALLOW_DEMO_SEED=true only for an intentional one-time bootstrap.');
+  }
+  const demoPassword = process.env.DEMO_SEED_PASSWORD || 'LocalSchool@123';
+  if (demoPassword.length < 12) throw new Error('DEMO_SEED_PASSWORD must be at least 12 characters');
+  const passwordHash = await bcrypt.hash(demoPassword, 12);
   const year = await prisma.academicYear.upsert({
     where: { name: '2026-27' },
     update: { active: true },

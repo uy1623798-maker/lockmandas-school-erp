@@ -56,8 +56,11 @@ attendanceRouter.post('/submit', allow(Role.TEACHER), asyncRoute(async (req: any
 }));
 
 attendanceRouter.post('/:id/request-reopen', allow(Role.TEACHER), asyncRoute(async (req: any, res: any) => {
-  const { reason } = z.object({ reason: z.string().min(5) }).parse(req.body);
-  const session = await prisma.attendanceSession.update({ where: { id: req.params.id }, data: { state: 'REOPEN_REQUESTED', reopenReason: reason } });
+  const { reason } = z.object({ reason: z.string().trim().min(5).max(500) }).strict().parse(req.body);
+  const teacher = await prisma.teacher.findUnique({ where: { userId: req.user.id } });
+  const permitted = teacher && await prisma.attendanceSession.findFirst({ where: { id: req.params.id, markedById: teacher.id, state: 'SUBMITTED' }, select: { id: true } });
+  if (!permitted) return res.status(404).json({ message: 'Submitted attendance session not found' });
+  const session = await prisma.attendanceSession.update({ where: { id: permitted.id }, data: { state: 'REOPEN_REQUESTED', reopenReason: reason } });
   res.json(session);
 }));
 

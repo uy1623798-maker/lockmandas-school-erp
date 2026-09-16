@@ -7,3 +7,6 @@ dist
 apps/api/prisma/dev.db
 .tmp-student-import/
 tmp/
+outputs/
+render-backup.sql
+*-backup.sql

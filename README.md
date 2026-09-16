@@ -11,7 +11,11 @@ A full-stack school website and role-based ERP built with React, Express, Prisma
 5. Load demo data: `npm run db:seed`.
 6. Start both apps: `npm run dev`.
 
-Open `http://localhost:5173`. Demo usernames are `admin`, `teacher`, and `student1`; all use `School@123`.
+Open `http://localhost:5173`. Local demo usernames are `admin`, `teacher`, and `student1`; newly created demo accounts use `LocalSchool@123` unless `DEMO_SEED_PASSWORD` is set. Demo seeding is blocked in production unless explicitly enabled for a one-time bootstrap.
+
+To email admission and contact enquiries to the school, set `RESEND_API_KEY` and
+`RESEND_FROM_EMAIL` (an address on a domain verified in Resend). The recipient defaults
+to `drlokmandaspublicschool01@gmail.com` and can be changed with `SCHOOL_ENQUIRY_EMAIL`.
 
 ## Architecture
 

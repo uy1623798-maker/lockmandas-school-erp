@@ -32,8 +32,8 @@ export default function Login() {
   };
 
   const accessCards = [
-    { kind: 'student' as const, title: 'Student Login', Icon: UserRound, label: 'Admission number', placeholder: 'Enter admission number', password: 'Student DOB: DDMMYYYY', note: 'Use admission number and date of birth.' },
-    { kind: 'teacher' as const, title: 'Teacher Login', Icon: GraduationCap, label: 'Teacher ID', placeholder: 'Enter Teacher ID', password: 'Teacher DOB: DDMMYYYY', note: 'Use Teacher ID and date of birth.' },
+    { kind: 'student' as const, title: 'Student Login', Icon: UserRound, label: 'Admission number', placeholder: 'Enter admission number', password: 'Enter your password', note: 'Use credentials issued by the school office.' },
+    { kind: 'teacher' as const, title: 'Teacher Login', Icon: GraduationCap, label: 'Teacher ID', placeholder: 'Enter Teacher ID', password: 'Enter your password', note: 'Use credentials issued by the school office.' },
   ];
 
   return <main className="login-page">

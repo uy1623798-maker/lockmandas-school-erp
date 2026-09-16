@@ -61,7 +61,13 @@ portalRouter.post('/marks/bulk',allow(Role.TEACHER),asyncRoute(async(q:any,r:any
   r.status(201).json({message:'Marks saved successfully',count:body.marks.length});
 }));
 portalRouter.get('/notices',asyncRoute(async(q:any,r:any)=>{const s=q.user.role==='STUDENT'?await prisma.student.findUnique({where:{userId:q.user.id}}):null;r.json(await prisma.notice.findMany({where:s?{OR:[{audience:'ALL'},{classId:s.classId}]}:{},include:{author:{select:{name:true}}},orderBy:{createdAt:'desc'}}))}));
-portalRouter.post('/notices',allow(Role.ADMIN,Role.TEACHER),asyncRoute(async(q:any,r:any)=>r.status(201).json(await prisma.notice.create({data:{...q.body,authorId:q.user.id}}))));
+portalRouter.post('/notices',allow(Role.ADMIN,Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
+  const body=z.object({title:z.string().trim().min(1).max(150),body:z.string().trim().min(1).max(5000),audience:z.enum(['ALL','CLASS']).default('ALL'),classId:z.string().nullable().optional()}).strict().parse(q.body);
+  if(body.audience==='CLASS'&&!body.classId)return r.status(400).json({message:'A class is required for a class notice'});
+  if(body.audience==='ALL'&&body.classId)return r.status(400).json({message:'An all-school notice cannot target a class'});
+  if(q.user.role===Role.TEACHER&&body.classId){const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});const assigned=teacher&&await prisma.teachingAssignment.findFirst({where:{teacherId:teacher.id,classId:body.classId},select:{id:true}});if(!assigned)return r.status(403).json({message:'This class is not assigned to you'})}
+  r.status(201).json(await prisma.notice.create({data:{...body,classId:body.classId||null,authorId:q.user.id}}));
+}));
 
 portalRouter.get('/tc/teacher/students',allow(Role.TEACHER),asyncRoute(async(q:any,r:any)=>{
   const teacher=await prisma.teacher.findUnique({where:{userId:q.user.id}});

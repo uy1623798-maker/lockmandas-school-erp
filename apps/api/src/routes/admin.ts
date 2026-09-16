@@ -1,24 +1,34 @@
 import { Role } from '@prisma/client';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import { z } from 'zod';
 import { allow, asyncRoute, auth, prisma } from '../lib.js';
 
 export const adminRouter = Router();
 adminRouter.use(auth, allow(Role.ADMIN));
 
+const id = z.string().cuid();
+const schemas = {
+  subjects: z.object({ name: z.string().trim().min(1).max(100), code: z.string().trim().min(1).max(30).regex(/^[A-Za-z0-9_-]+$/) }).strict(),
+  classes: z.object({ name: z.string().trim().min(1).max(50), section: z.string().trim().min(1).max(20), academicYearId: id }).strict(),
+  academicYears: z.object({ name: z.string().trim().min(1).max(30), startsOn: z.coerce.date(), endsOn: z.coerce.date(), active: z.boolean().optional() }).strict(),
+  timetable: z.object({ classId: id, subjectId: id, teacherId: id, dayOfWeek: z.number().int().min(1).max(7), period: z.number().int().min(1).max(20), startsAt: z.string().trim().min(1).max(20), endsAt: z.string().trim().min(1).max(20) }).strict(),
+  assignments: z.object({ teacherId: id, classId: id, subjectId: id }).strict(),
+};
 const configs: any = {
-  subjects: prisma.subject,
-  classes: prisma.class,
-  academicYears: prisma.academicYear,
-  timetable: prisma.timetableEntry,
-  assignments: prisma.teachingAssignment,
+  subjects: { model: prisma.subject, schema: schemas.subjects },
+  classes: { model: prisma.class, schema: schemas.classes },
+  academicYears: { model: prisma.academicYear, schema: schemas.academicYears },
+  timetable: { model: prisma.timetableEntry, schema: schemas.timetable },
+  assignments: { model: prisma.teachingAssignment, schema: schemas.assignments },
 };
 
-for (const [path, model] of Object.entries(configs) as any) {
+for (const [path, config] of Object.entries(configs) as any) {
+  const { model, schema } = config;
   adminRouter.get(`/${path}`, asyncRoute(async (_q: any, r: any) => r.json(await model.findMany())));
-  adminRouter.post(`/${path}`, asyncRoute(async (q: any, r: any) => r.status(201).json(await model.create({ data: q.body }))));
-  adminRouter.patch(`/${path}/:id`, asyncRoute(async (q: any, r: any) => r.json(await model.update({ where: { id: q.params.id }, data: q.body }))));
+  adminRouter.post(`/${path}`, asyncRoute(async (q: any, r: any) => r.status(201).json(await model.create({ data: schema.parse(q.body) }))));
+  adminRouter.patch(`/${path}/:id`, asyncRoute(async (q: any, r: any) => r.json(await model.update({ where: { id: q.params.id }, data: schema.partial().parse(q.body) }))));
   adminRouter.delete(`/${path}/:id`, asyncRoute(async (q: any, r: any) => {
     await model.delete({ where: { id: q.params.id } });
     r.status(204).end();
@@ -26,13 +36,16 @@ for (const [path, model] of Object.entries(configs) as any) {
 }
 
 adminRouter.get('/teachers', asyncRoute(async (_q: any, r: any) => r.json(await prisma.teacher.findMany({
-  include: { user: true, assignments: { include: { class: true, subject: true } } },
+  include: { user: { select: { id: true, name: true, username: true, email: true, role: true, avatarUrl: true, createdAt: true, updatedAt: true } }, assignments: { include: { class: true, subject: true } } },
 }))));
 adminRouter.get('/students', asyncRoute(async (_q: any, r: any) => r.json(await prisma.student.findMany({
-  include: { user: true, class: true },
+  include: { user: { select: { id: true, name: true, username: true, email: true, role: true, avatarUrl: true, createdAt: true, updatedAt: true } }, class: true },
 }))));
 
 const optionalText = z.string().trim().optional().nullable();
+const issueInitialPassword = () => `${crypto.randomBytes(9).toString('base64url')}Aa1!`;
+const strongPassword = z.string().min(12).max(128)
+  .refine((value) => /[A-Za-z]/.test(value) && /\d/.test(value), 'Password must contain letters and numbers');
 
 function attendanceClassIds(classesTaught: string | null | undefined, classes: Array<{ id: string; name: string }>) {
   const tokens = new Set(String(classesTaught || '').toUpperCase().split(',').map((value) => value.trim()).filter(Boolean));
@@ -75,28 +88,27 @@ const importTeacherSchema = z.object({
 
 adminRouter.post('/teachers/import', asyncRoute(async (q: any, r: any) => {
   const body = z.object({ teachers: z.array(importTeacherSchema).min(1).max(100) }).parse(q.body);
-  const prepared = await Promise.all(body.teachers.map(async (teacher) => {
-    const [year, month, day] = teacher.dateOfBirth.split('-');
-    return { teacher, passwordHash: await bcrypt.hash(`${day}${month}${year}`, 10) };
-  }));
   let created = 0;
   let updated = 0;
+  const credentials: Array<{ employeeNo: string; password: string }> = [];
   const [attendanceSubject, classes] = await Promise.all([
     prisma.subject.findUnique({ where: { code: 'CLASS-ATT' } }),
     prisma.class.findMany({ select: { id: true, name: true } }),
   ]);
 
   await prisma.$transaction(async (tx) => {
-    for (const { teacher, passwordHash } of prepared) {
+    for (const teacher of body.teachers) {
       const existing = await tx.teacher.findUnique({ where: { employeeNo: teacher.employeeNo } });
+      const initialPassword = existing ? null : issueInitialPassword();
       const account = existing
         ? await tx.user.update({
           where: { id: existing.userId },
-          data: { name: teacher.name, username: teacher.employeeNo, passwordHash, role: Role.TEACHER, refreshTokenHash: null, resetTokenHash: null, resetTokenExpires: null },
+          data: { name: teacher.name, username: teacher.employeeNo, role: Role.TEACHER },
         })
         : await tx.user.create({
-          data: { name: teacher.name, username: teacher.employeeNo, email: `teacher_${teacher.employeeNo}@lokmandas.edu`, passwordHash, role: Role.TEACHER },
+          data: { name: teacher.name, username: teacher.employeeNo, email: `teacher_${teacher.employeeNo}@lokmandas.edu`, passwordHash: await bcrypt.hash(initialPassword!, 12), role: Role.TEACHER },
         });
+      if (initialPassword) credentials.push({ employeeNo: teacher.employeeNo, password: initialPassword });
       const { name: _name, dateOfBirth, ...profile } = teacher;
       const data = { ...profile, dateOfBirth: new Date(`${dateOfBirth}T00:00:00.000Z`) };
       let teacherRecord;
@@ -117,7 +129,7 @@ adminRouter.post('/teachers/import', asyncRoute(async (q: any, r: any) => {
     }
   }, { timeout: 30000 });
 
-  r.status(201).json({ created, updated });
+  r.status(201).json({ created, updated, credentials });
 }));
 
 adminRouter.post('/teachers/backfill-attendance-assignments', asyncRoute(async (_q: any, r: any) => {
@@ -169,9 +181,9 @@ adminRouter.post('/students/import', asyncRoute(async (q: any, r: any) => {
     update: {},
     create: { name: body.className, section: body.section, academicYearId: year.id },
   });
-  const passwordHash = await bcrypt.hash('School@123', 12);
   let created = 0;
   let updated = 0;
+  const credentials: Array<{ admissionNo: string; password: string }> = [];
 
   if (body.replaceExistingClass) {
     const existingUsers = await prisma.student.findMany({
@@ -206,28 +218,30 @@ adminRouter.post('/students/import', asyncRoute(async (q: any, r: any) => {
         updated += 1;
       } else {
         const key = accountKey(student.admissionNo);
+        const initialPassword = issueInitialPassword();
         const user = await tx.user.create({
           data: {
             name: student.name,
             username: `student_${key}`,
             email: `student_${key}@lokmandas.edu`,
-            passwordHash,
+            passwordHash: await bcrypt.hash(initialPassword, 12),
             role: Role.STUDENT,
           },
         });
         await tx.student.create({
           data: { userId: user.id, admissionNo: student.admissionNo, ...studentData },
         });
+        credentials.push({ admissionNo: student.admissionNo, password: initialPassword });
         created += 1;
       }
     }
   }, { timeout: 30000 });
 
-  return r.status(201).json({ classId: schoolClass.id, created, updated });
+  return r.status(201).json({ classId: schoolClass.id, created, updated, credentials });
 }));
 
 adminRouter.post('/students/set-passwords', asyncRoute(async (q: any, r: any) => {
-  const body = z.object({ credentials: z.array(z.object({ admissionNo: z.string().min(1), password: z.string().length(8).regex(/^\d{8}$/) })).min(1).max(25) }).parse(q.body);
+  const body = z.object({ credentials: z.array(z.object({ admissionNo: z.string().trim().min(1), password: strongPassword })).min(1).max(25) }).strict().parse(q.body);
   const admissionNos = body.credentials.map((credential) => credential.admissionNo);
   const students = await prisma.student.findMany({ where: { admissionNo: { in: admissionNos } }, select: { admissionNo: true, userId: true } });
   if (students.length !== body.credentials.length) return r.status(400).json({ message: 'One or more admission numbers were not found' });
@@ -241,15 +255,18 @@ adminRouter.post('/students/set-passwords', asyncRoute(async (q: any, r: any) =>
 
 adminRouter.post('/people', asyncRoute(async (q: any, r: any) => {
   const b = z.object({
-    name: z.string(), username: z.string(), email: z.string().email(), password: z.string().min(8),
+    name: z.string().trim().min(1).max(100), username: z.string().trim().min(3).max(80), email: z.string().trim().email().max(254), password: strongPassword,
     role: z.enum(['TEACHER', 'STUDENT']), employeeNo: z.string().optional(), admissionNo: z.string().optional(),
     classId: z.string().optional(), rollNo: z.number().optional(), parentContact: z.string().optional(),
+  }).strict().superRefine((value, ctx) => {
+    if (value.role === 'TEACHER' && !value.employeeNo) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['employeeNo'], message: 'Employee number is required' });
+    if (value.role === 'STUDENT' && (!value.admissionNo || !value.classId || !value.rollNo)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['admissionNo'], message: 'Admission number, class, and roll number are required' });
   }).parse(q.body);
   const result = await prisma.$transaction(async (tx) => {
     const u = await tx.user.create({ data: { name: b.name, username: b.username, email: b.email.toLowerCase(), passwordHash: await bcrypt.hash(b.password, 12), role: b.role } });
     if (b.role === 'TEACHER') await tx.teacher.create({ data: { userId: u.id, employeeNo: b.employeeNo! } });
     else await tx.student.create({ data: { userId: u.id, admissionNo: b.admissionNo!, classId: b.classId!, rollNo: b.rollNo!, parentContact: b.parentContact } });
-    return u;
+    return { id: u.id, name: u.name, username: u.username, email: u.email, role: u.role, createdAt: u.createdAt };
   });
   r.status(201).json(result);
 }));
