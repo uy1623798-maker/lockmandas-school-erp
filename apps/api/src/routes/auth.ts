@@ -6,8 +6,10 @@ import { z } from 'zod';
 import { asyncRoute, auth, prisma, SessionUser, signAccess, signRefresh } from '../lib.js';
 import { env } from '../config.js';
 export const authRouter = Router();
-const cookie = { httpOnly: true, sameSite: 'strict' as const, secure: process.env.NODE_ENV === 'production', path: '/api/auth', maxAge: 7 * 864e5 };
-const clearCookie = { httpOnly: true, sameSite: 'strict' as const, secure: process.env.NODE_ENV === 'production', path: '/api/auth' };
+const crossSiteCookie=process.env.NODE_ENV==='production'&&Boolean(process.env.VERCEL);
+const sameSite:'none'|'strict'=crossSiteCookie?'none':'strict';
+const cookie = { httpOnly: true, sameSite, secure: process.env.NODE_ENV === 'production', path: '/api/auth', maxAge: 7 * 864e5 };
+const clearCookie = { httpOnly: true, sameSite, secure: process.env.NODE_ENV === 'production', path: '/api/auth' };
 const dummyPasswordHash = '$2b$12$LQv3c1yqBW9wOLzHzU5hKe7u8f/7Z8aPZ3QZ4pVfQhI9nQJ0m8i3S';
 authRouter.post('/login', asyncRoute(async (req: any, res: any) => {
   const b = z.object({ login: z.string().trim().min(3), password: z.string().min(6) }).parse(req.body);
