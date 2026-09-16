@@ -10,9 +10,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: lokmandas-erp-db
-          property: connectionString
+        # Set this manually in Render's Environment page with the Supabase
+        # Session Pooler URI.  The old managed Render database is unreachable.
+        sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
