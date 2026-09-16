@@ -9,6 +9,40 @@ export const adminRouter = Router();
 adminRouter.use(auth, allow(Role.ADMIN));
 
 const id = z.string().cuid();
+const homeHighlightSchema = z.object({
+  kind: z.enum(['RESULTS', 'IMPORTANT', 'ADMISSIONS', 'CALENDAR']),
+  eyebrow: z.string().trim().min(1).max(80),
+  title: z.string().trim().min(1).max(140),
+  description: z.string().trim().min(1).max(600),
+  actionLabel: z.string().trim().min(1).max(60),
+  actionUrl: z.string().trim().url().max(1000).optional().nullable(),
+  fileName: z.string().trim().min(1).max(180).optional().nullable(),
+  fileData: z.string().min(1).optional().nullable(),
+  active: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(999).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (!value.actionUrl && !value.fileData) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['actionUrl'], message: 'Add a link or attach a PDF' });
+  if (value.fileData && !value.fileName) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['fileName'], message: 'PDF filename is required' });
+});
+const homeHighlightUpdateSchema = z.object({
+  kind: z.enum(['RESULTS', 'IMPORTANT', 'ADMISSIONS', 'CALENDAR']).optional(),
+  eyebrow: z.string().trim().min(1).max(80).optional(),
+  title: z.string().trim().min(1).max(140).optional(),
+  description: z.string().trim().min(1).max(600).optional(),
+  actionLabel: z.string().trim().min(1).max(60).optional(),
+  actionUrl: z.string().trim().url().max(1000).optional().nullable(),
+  fileName: z.string().trim().min(1).max(180).optional().nullable(),
+  fileData: z.string().min(1).optional().nullable(),
+  active: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).max(999).optional(),
+}).strict();
+const MAX_HIGHLIGHT_PDF_BYTES = 5 * 1024 * 1024;
+const decodePdf = (value: string) => {
+  const base64 = value.replace(/^data:application\/pdf;base64,/i, '');
+  const file = Buffer.from(base64, 'base64');
+  if (!file.length || file.length > MAX_HIGHLIGHT_PDF_BYTES || file.subarray(0, 5).toString() !== '%PDF-') throw new Error('Attach a valid PDF smaller than 5 MB');
+  return file;
+};
 const schemas = {
   subjects: z.object({ name: z.string().trim().min(1).max(100), code: z.string().trim().min(1).max(30).regex(/^[A-Za-z0-9_-]+$/) }).strict(),
   classes: z.object({ name: z.string().trim().min(1).max(50), section: z.string().trim().min(1).max(20), academicYearId: id }).strict(),
@@ -34,6 +68,24 @@ for (const [path, config] of Object.entries(configs) as any) {
     r.status(204).end();
   }));
 }
+
+const highlightSelect = { id: true, kind: true, eyebrow: true, title: true, description: true, actionLabel: true, actionUrl: true, fileName: true, fileSize: true, active: true, sortOrder: true, createdAt: true, updatedAt: true } as const;
+adminRouter.get('/home-highlights', asyncRoute(async (_q: any, r: any) => r.json(await prisma.homeHighlight.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }], select: highlightSelect }))));
+adminRouter.post('/home-highlights', asyncRoute(async (q: any, r: any) => {
+  const body = homeHighlightSchema.parse(q.body);
+  const fileData = body.fileData ? decodePdf(body.fileData) : null;
+  r.status(201).json(await prisma.homeHighlight.create({ data: { ...body, actionUrl: body.actionUrl || null, fileName: body.fileName || null, fileData, fileSize: fileData?.length || null }, select: highlightSelect }));
+}));
+adminRouter.patch('/home-highlights/:id', asyncRoute(async (q: any, r: any) => {
+  const highlightId = id.parse(q.params.id);
+  const body = homeHighlightUpdateSchema.parse(q.body);
+  const fileData = body.fileData === undefined ? undefined : (body.fileData ? decodePdf(body.fileData) : null);
+  const data: any = { ...body };
+  if (fileData !== undefined) { data.fileData = fileData; data.fileSize = fileData?.length || null; }
+  if (body.fileName === null) { data.fileData = null; data.fileSize = null; }
+  r.json(await prisma.homeHighlight.update({ where: { id: highlightId }, data, select: highlightSelect }));
+}));
+adminRouter.delete('/home-highlights/:id', asyncRoute(async (q: any, r: any) => { await prisma.homeHighlight.delete({ where: { id: id.parse(q.params.id) } }); r.status(204).end(); }));
 
 adminRouter.get('/teachers', asyncRoute(async (_q: any, r: any) => r.json(await prisma.teacher.findMany({
   include: { user: { select: { id: true, name: true, username: true, email: true, role: true, avatarUrl: true, createdAt: true, updatedAt: true } }, assignments: { include: { class: true, subject: true } } },
